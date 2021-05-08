@@ -1,0 +1,89 @@
+---
+- name: Generate Certificates
+  hosts: dapservers
+  gather_facts: True
+  vars:
+    servername: "{{ ansible_hostname }}"
+    serverfqdn: "{{ ansible_fqdn }}"
+    serverip: "{{ ansible_eth0.ipv4.address }}"
+
+  tasks:
+    - name: create certs directory if it does not exist
+      file:
+        path: "/opt/certs"
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: check if ext file exists
+      stat:
+        path: /opt/certs/server.cnf
+      register: cnf_exists
+
+    - name: check for ext configuration file and delete
+      file:
+        path: /opt/certs/server.cnf
+        state: absent
+      when: cnf_exists.stat.exists
+
+    - name: create ext configuration file
+      copy:
+        dest: "/opt/certs/server.cnf"
+        content: |
+          subjectAltName=DNS:"{{ servername }}",DNS:"{{ serverfqdn }},IP:127.0.0.1,IP:"{{ serverip }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: check for cert in anchors folder
+      stat:
+        path: /etc/pki/ca-trust/source/anchors/ca-cert.pem
+      register: cacert_exists
+
+    - name: copy CA cert to anchors
+      ansible.builtin.copy:
+        src: /opt/certs/ca-cert.pem
+        dest: /etc/pki/ca-trust/source/anchors
+        owner: root
+        group: root
+        mode: 0644
+      when: not cacert_exists.stat.exists
+
+    - name: update CA trust
+      command: update-ca-trust
+      when: not cacert_exists.stat.exists
+
+    - name: check if CA cert exists
+      stat:
+        path: /opt/certs/ca-cert.pem
+      register: cert_exists
+
+    - name: copy CA cert
+      ansible.builtin.copy:
+        src: /opt/certs/ca-cert.pem
+        dest: /opt/certs
+        owner: root
+        group: root
+        mode: 0644
+      when: not cert_exists.stat.exists
+
+    - name: check if CA key exists
+      stat:
+        path: /etc/pki/ca-trust/source/anchors/ca-key.pem
+      register: key_exists
+
+    - name: copy CA key
+      ansible.builtin.copy:
+        src: /opt/certs/ca-key.pem
+        dest: /opt/certs
+        owner: root
+        group: root
+        mode: 0644
+      when: not key_exists.stat.exists
+
+    - name: Generate CSR
+      command: openssl req -newkey rsa:2048 -nodes -keyout /opt/certs/server-key.pem -out /opt/certs/server-req.pem -subj '/C=US/ST=NC/L=Cary/O=CWT/OU=IT/CN="{{ serverfqdn }}"'
+
+    - name: Sign certificate request
+      command: openssl x509 -req -in /opt/certs/server-req.pem -days 9999 -CA /opt/certs/ca-cert.pem -CAkey /opt/certs/ca-key.pem -CAcreateserial -out /opt/certs/server-cert.pem -extfile /opt/certs/server.cnf
