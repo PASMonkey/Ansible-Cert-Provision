@@ -1,1 +1,17 @@
+---
+- name: Generate Certificates
+  hosts: "{{ certauthserver }}"
+  gather_facts: True
+  vars:
+    servername: "{{ ansible_hostname }}"
+    serverfqdn: "{{ ansible_fqdn }}"
+    serverip: "{{ ansible_eth0.ipv4.address }}"
 
+  tasks:
+    - name: create certs directory if it does not exist
+      file:
+        path: "/opt/certs"
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
