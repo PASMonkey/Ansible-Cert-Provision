@@ -6,6 +6,8 @@
     servername: "{{ ansible_hostname }}"
     serverfqdn: "{{ ansible_fqdn }}"
     serverip: "{{ ansible_eth0.ipv4.address }}"
+  set_fact:
+    cn: "{{ 'CA-' + {{ ansible_fqdn.split('.')[1] | upper }} +'-' + {{ ansible_fqdn.split('.')[2]  | upper }}"
 
   tasks:
     - name: create certs directory if it does not exist
@@ -15,3 +17,19 @@
         owner: root
         group: root
         mode: 0755
+        
+    - name: check if ca cert exists
+      stat:
+        path: /opt/certs/ca-cert.pem
+      register: cacert_exists
+    
+    - name: check if ca key exists
+      stat:
+        path: /opt/certs/ca-key.pem
+      register: cakey_exists
+      
+    - name: Generate CA Certificate
+      command: openssl req -x509 -newkey rsa:4096 -days 9999 -keyout ca-key.pem -out ca-cert.pem -subj '/C=US/ST=NC/L=Cary/O=CWT/OU=IT/CN={{ cn }}"
+      when: 
+        - not cacert_exists exists
+        - not cakey_exists.exists
